@@ -77,14 +77,14 @@ static void gm_apply_buffer(volatile gm_dual_buffer *buffer, bool stock) {
   }
 }
 
-//Populate the stock lkas - called by fwd hook
-static void gm_set_stock_lkas(CAN_FIFOMailBox_TypeDef *to_send) {
-  gm_lkas_buffer.stock_frame.RIR = to_send->RIR;
-  gm_lkas_buffer.stock_frame.RDTR = to_send->RDTR;
-  gm_lkas_buffer.stock_frame.RDLR = to_send->RDLR;
-  gm_lkas_buffer.stock_frame.RDHR = to_send->RDHR;
-  gm_lkas_buffer.stock_ts = TIM2->CNT;
-}
+// //Populate the stock lkas - called by fwd hook
+// static void gm_set_stock_lkas(CAN_FIFOMailBox_TypeDef *to_send) {
+//   gm_lkas_buffer.stock_frame.RIR = to_send->RIR;
+//   gm_lkas_buffer.stock_frame.RDTR = to_send->RDTR;
+//   gm_lkas_buffer.stock_frame.RDLR = to_send->RDLR;
+//   gm_lkas_buffer.stock_frame.RDHR = to_send->RDHR;
+//   gm_lkas_buffer.stock_ts = TIM2->CNT;
+// }
 
 //Populate the OP lkas - called by tx hook
 static void gm_set_op_lkas(CAN_FIFOMailBox_TypeDef *to_send) {
