@@ -11,6 +11,17 @@ def create_steering_control(packer, bus, apply_steer, idx, lkas_active):
 
   return packer.make_can_msg("ASCMLKASteeringCmd", bus, values)
 
+def create_aeb_command(packer, bus, apply_brake, idx, aeb_active):
+
+  values = {
+    "BrakeCmdActive": aeb_active,
+    "BrakingForce": apply_brake,
+    "RollingCounter": idx,
+    "Checksum": 0x100000 - (aeb_active << 19) - (apply_brake & 0x7ffff) - idx
+  }
+
+  return packer.make_can_msg("AEBCmd", bus, values)
+
 def create_adas_keepalive(bus):
   dat = b"\x00\x00\x00\x00\x00\x00\x00"
   return [make_can_msg(0x409, dat, bus), make_can_msg(0x40a, dat, bus)]

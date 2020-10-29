@@ -74,6 +74,8 @@ class CarController():
 
       can_sends.append(gmcan.create_steering_control(self.packer_pt, CanBus.POWERTRAIN, apply_steer, idx, lkas_enabled))
 
+      can_sends.append(gmcan.create_aeb_command(self.packer_pt, CanBus.POWERTRAIN, 0, idx, False))
+
     # GAS/BRAKE
     # no output if not enabled, but keep sending keepalive messages
     # treat pedals as one
@@ -93,7 +95,7 @@ class CarController():
 
       at_full_stop = enabled and CS.out.standstill
       near_stop = enabled and (CS.out.vEgo < P.NEAR_STOP_BRAKE_PHASE)
-      can_sends.append(gmcan.create_friction_brake_command(self.packer_ch, CanBus.CHASSIS, apply_brake, idx, near_stop, at_full_stop))
+      #can_sends.append(gmcan.create_friction_brake_command(self.packer_ch, CanBus.CHASSIS, apply_brake, idx, near_stop, at_full_stop))
       can_sends.append(gmcan.create_gas_regen_command(self.packer_pt, CanBus.POWERTRAIN, apply_gas, idx, enabled, at_full_stop))
 
     # Send dashboard UI commands (ACC status), 25hz
