@@ -11,7 +11,10 @@ def create_steering_control(packer, bus, apply_steer, idx, lkas_active):
 
   return packer.make_can_msg("ASCMLKASteeringCmd", bus, values)
 
-def create_aeb_command(packer, bus, apply_brake, idx, aeb_active):
+def create_aeb_command(packer, bus, apply_brake, idx):
+  aeb_active = True
+  if apply_brake == 0:
+    aeb_active = False
 
   values = {
     "BrakeCmdActive": aeb_active,

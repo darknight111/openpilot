@@ -30,7 +30,8 @@ class CarControllerParams():
     # pedal lookups, only for Volt
     MAX_GAS = 3072              # Only a safety limit
     ZERO_GAS = 2048
-    MAX_BRAKE = 350             # Should be around 3.5m/s^2, including regen
+    #AEB max value
+    MAX_BRAKE = 127             # Should be around 3.5m/s^2, including regen
     self.MAX_ACC_REGEN = 1404  # ACC Regen braking is slightly less powerful than max regen paddle
     self.GAS_LOOKUP_BP = [-0.25, 0., 0.5]
     self.GAS_LOOKUP_V = [self.MAX_ACC_REGEN, ZERO_GAS, MAX_GAS]
@@ -74,7 +75,7 @@ class CarController():
 
       can_sends.append(gmcan.create_steering_control(self.packer_pt, CanBus.POWERTRAIN, apply_steer, idx, lkas_enabled))
 
-      can_sends.append(gmcan.create_aeb_command(self.packer_pt, CanBus.POWERTRAIN, 0, idx, False))
+      
 
     # GAS/BRAKE
     # no output if not enabled, but keep sending keepalive messages
@@ -94,7 +95,8 @@ class CarController():
       idx = (frame // 4) % 4
 
       at_full_stop = enabled and CS.out.standstill
-      near_stop = enabled and (CS.out.vEgo < P.NEAR_STOP_BRAKE_PHASE)
+      #near_stop = enabled and (CS.out.vEgo < P.NEAR_STOP_BRAKE_PHASE)
+      can_sends.append(gmcan.create_aeb_command(self.packer_pt, CanBus.POWERTRAIN, apply_brake, idx, False))
       #can_sends.append(gmcan.create_friction_brake_command(self.packer_ch, CanBus.CHASSIS, apply_brake, idx, near_stop, at_full_stop))
       can_sends.append(gmcan.create_gas_regen_command(self.packer_pt, CanBus.POWERTRAIN, apply_gas, idx, enabled, at_full_stop))
 
