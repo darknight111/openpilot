@@ -33,9 +33,9 @@
 
 #define USER_AGENT "NEOSUpdater-0.2"
 
-#define MANIFEST_URL_EON_STAGING "https://github.com/commaai/eon-neos/raw/master/update.staging.json"
+#define MANIFEST_URL_EON_STAGING "https://github.com/jasonjshuler/eon-neos/raw/master/update.staging.json"
 #define MANIFEST_URL_EON_LOCAL "http://192.168.5.1:8000/neosupdate/update.local.json"
-#define MANIFEST_URL_EON "https://github.com/commaai/eon-neos/raw/master/update.json"
+#define MANIFEST_URL_EON "https://github.com/jasonjshuler/eon-neos/raw/master/update.json"
 const char *manifest_url = MANIFEST_URL_EON;
 
 #define RECOVERY_DEV "/dev/block/bootdevice/by-name/recovery"
