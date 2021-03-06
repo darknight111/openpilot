@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 from cereal import car
 from selfdrive.config import Conversions as CV
-from selfdrive.car.gm.values import CAR, Ecu, ECU_FINGERPRINT, CruiseButtons, AccState, FINGERPRINTS
-from selfdrive.car import STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness, is_ecu_disconnected, gen_empty_fingerprint
+from selfdrive.car.gm.values import CAR, CruiseButtons, \
+                                    AccState, NO_ASCM_CARS
+from selfdrive.car import STD_CARGO_KG, scale_rot_inertia, scale_tire_stiffness, gen_empty_fingerprint
 from selfdrive.car.interfaces import CarInterfaceBase
+from selfdrive.controls.lib.events import Events
+from selfdrive.controls.lib.drive_helpers import V_CRUISE_MAX
 
 ButtonType = car.CarState.ButtonEvent.Type
 EventName = car.CarEvent.EventName
+GearShifter = car.CarState.GearShifter
+MAX_CTRL_SPEED = (V_CRUISE_MAX + 4) * CV.KPH_TO_MS  # 135 + 4 = 86 mph
 
 class CarInterface(CarInterfaceBase):
 
@@ -15,7 +20,7 @@ class CarInterface(CarInterfaceBase):
     return float(accel) / 4.0
 
   @staticmethod
-  def get_params(candidate, fingerprint=gen_empty_fingerprint(), has_relay=False, car_fw=None):
+  def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=None):
     ret = CarInterfaceBase.get_std_params(candidate, fingerprint)
     ret.carName = "gm"
     ret.safetyModel = car.CarParams.SafetyModel.gm
@@ -28,7 +33,7 @@ class CarInterface(CarInterfaceBase):
     # Presence of a camera on the object bus is ok.
     # Have to go to read_only if ASCM is online (ACC-enabled cars),
     # or camera is on powertrain bus (LKA cars without ACC).
-    ret.enableCamera = is_ecu_disconnected(fingerprint[0], FINGERPRINTS, ECU_FINGERPRINT, candidate, Ecu.fwdCamera) or has_relay
+    ret.enableCamera = True
     ret.openpilotLongitudinalControl = ret.enableCamera
     tire_stiffness_factor = 0.444  # not optimized yet
 
@@ -39,6 +44,11 @@ class CarInterface(CarInterfaceBase):
     ret.lateralTuning.pid.kf = 0.00004   # full torque for 20 deg at 80mph means 0.00007818594
     ret.steerRateCost = 0.5
     ret.steerActuatorDelay = 0.  # Default delay, not measured yet
+
+    ret.enableGasInterceptor = 0x201 in fingerprint[0]
+    #TODO: this should be case based
+    if ret.enableGasInterceptor:
+      ret.radarOffCan = False
 
     if candidate == CAR.VOLT:
       # supports stop and go, but initial engage must be above 18mph (which include conservatism)
@@ -117,17 +127,34 @@ class CarInterface(CarInterfaceBase):
     ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(ret.mass, ret.wheelbase, ret.centerToFront,
                                                                          tire_stiffness_factor=tire_stiffness_factor)
 
-    ret.longitudinalTuning.kpBP = [5., 35.]
-    ret.longitudinalTuning.kpV = [2.4, 1.5]
-    ret.longitudinalTuning.kiBP = [0.]
-    ret.longitudinalTuning.kiV = [0.36]
+    ret.longitudinalTuning.kpBP = [0., 5., 35.]
+    ret.longitudinalTuning.kiBP = [0., 35.]
+
+    if ret.enableGasInterceptor and candidate == CAR.BOLT:
+      # TODO: Move this to before cars, and put the Bolt-specific tuning in its category.
+      # Assumes the Bolt is using L-Mode for regen braking.
+      ret.gasMaxBP = [0.0, 5.0, 9.0, 35.0]
+      ret.gasMaxV =  [0.4, 0.5, 0.7, 0.7]
+      ret.longitudinalTuning.kpBP = [0.0, 5.0, 10.0, 20.0, 35.0]
+      ret.longitudinalTuning.kpV = [0.6, 0.95, 1.19, 1.27, 1.18]
+      ret.longitudinalTuning.kiV = [0.31, 0.26]
+    elif ret.enableGasInterceptor:
+      # Use the defaults:
+      ret.gasMaxBP = [0., 9., 35]
+      ret.gasMaxV = [0.2, 0.5, 0.7]
+      ret.longitudinalTuning.kpV = [1.2, 0.8, 0.5]
+      ret.longitudinalTuning.kiV = [0.18, 0.12]
+    else:
+      ret.gasMaxBP = [0.]
+      ret.gasMaxV = [0.5]
+      ret.longitudinalTuning.kpV = [3.6, 2.4, 1.5]
+      ret.longitudinalTuning.kiV = [0.54, 0.36]
 
     ret.stoppingControl = True
     ret.startAccel = 0.8
 
     ret.steerLimitTimer = 0.4
     ret.radarTimeStep = 0.0667  # GM radar runs at 15Hz instead of standard 20Hz
-
     return ret
 
   # returns a car.CarState
@@ -160,7 +187,8 @@ class CarInterface(CarInterfaceBase):
       elif but == CruiseButtons.CANCEL:
         be.type = ButtonType.cancel
       elif but == CruiseButtons.MAIN:
-        be.type = ButtonType.altButton3
+        if not self.CP.enableGasInterceptor:
+          be.type = ButtonType.altButton3
       buttonEvents.append(be)
 
     ret.buttonEvents = buttonEvents
@@ -179,13 +207,56 @@ class CarInterface(CarInterfaceBase):
       # do enable on both accel and decel buttons
       if b.type in [ButtonType.accelCruise, ButtonType.decelCruise] and not b.pressed:
         events.add(EventName.buttonEnable)
-
+      # do disable on button down
+      if b.type == ButtonType.cancel and b.pressed:
+        events.add(EventName.buttonCancel)
     ret.events = events.to_msg()
 
     # copy back carState packet to CS
     self.CS.out = ret.as_reader()
 
     return self.CS.out
+
+  # Override create_common_events locally to handle a special case for the Bolt EV.
+  def create_common_events(self, cs_out, extra_gears=[], gas_resume_speed=-1):  # pylint: disable=dangerous-default-value
+    events = Events()
+
+    if cs_out.doorOpen:
+      events.add(EventName.doorOpen)
+    if cs_out.seatbeltUnlatched:
+      events.add(EventName.seatbeltNotLatched)
+    if cs_out.gearShifter != GearShifter.drive and cs_out.gearShifter not in extra_gears:
+      events.add(EventName.wrongGear)
+    if cs_out.gearShifter == GearShifter.reverse:
+      events.add(EventName.reverseGear)
+    if not cs_out.cruiseState.available:
+      events.add(EventName.wrongCarMode)
+    if cs_out.espDisabled:
+      events.add(EventName.espDisabled)
+    if cs_out.stockFcw:
+      events.add(EventName.stockFcw)
+    if cs_out.stockAeb:
+      events.add(EventName.stockAeb)
+    if cs_out.vEgo > MAX_CTRL_SPEED:
+      events.add(EventName.speedTooHigh)
+
+    if cs_out.steerError:
+      events.add(EventName.steerUnavailable)
+    elif cs_out.steerWarning:
+      events.add(EventName.steerTempUnavailable)
+
+    # Disable on rising edge of gas or brake. Also disable on brake when speed > 0.
+    if cs_out.brakePressed and (not self.CS.out.brakePressed or not cs_out.standstill):
+      events.add(EventName.pedalPressed)
+    # For the Bolt EV, we want OP to manage cruise state when there's a pedal 
+    # interceptor, so ignore these events
+    if not (self.CP.enableGasInterceptor and self.CP.carFingerprint in NO_ASCM_CARS):
+      if cs_out.cruiseState.enabled and not self.CS.out.cruiseState.enabled:
+        events.add(EventName.pcmEnable)
+      elif not cs_out.cruiseState.enabled:
+        events.add(EventName.pcmDisable)
+
+    return events
 
   def apply(self, c):
     hud_v_cruise = c.hudControl.setSpeed
