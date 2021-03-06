@@ -14,6 +14,7 @@ from cereal import car, log
 EventName = car.CarEvent.EventName
 HwType = log.HealthData.HwType
 
+
 def get_startup_event(car_recognized, controller_available, hw_type):
   if comma_remote and tested_branch:
     event = EventName.startup
@@ -146,7 +147,8 @@ def fingerprint(logcan, sendcan, has_relay):
       # Toyota needs higher time to fingerprint, since DSU does not broadcast immediately
       if only_toyota_left(candidate_cars[b]):
         frame_fingerprint = 100  # 1s
-      if len(candidate_cars[b]) == 1 and frame > frame_fingerprint:
+      if len(candidate_cars[b]) == 1:
+        if frame > frame_fingerprint:
           # fingerprint done
           car_fingerprint = candidate_cars[b][0]
 
