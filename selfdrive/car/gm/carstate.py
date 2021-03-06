@@ -5,7 +5,8 @@ from opendbc.can.can_define import CANDefine
 from opendbc.can.parser import CANParser
 from selfdrive.car.interfaces import CarStateBase
 from selfdrive.car.gm.values import DBC, CAR, AccState, CanBus, \
-                                    CruiseButtons, STEER_THRESHOLD
+                                    CruiseButtons, STEER_THRESHOLD, \
+                                    REGEN_CARS
 
 
 class CarState(CarStateBase):
@@ -37,8 +38,14 @@ class CarState(CarStateBase):
     if ret.brake < 10/0xd0:
       ret.brake = 0.
 
+
     ret.gas = pt_cp.vl["AcceleratorPedal"]['AcceleratorPedal'] / 254.
-    ret.gasPressed = ret.gas > 1e-5
+    # Disable gaspress event for gas interceptor, indistinguishable
+    # TODO: compute whether user is applying gas, and use that to disable OP
+    if not self.CP.enableGasInterceptor:
+      ret.gasPressed = ret.gas > 1e-5
+    else:
+      ret.gasPressed = False
 
     ret.steeringTorque = pt_cp.vl["PSCMStatus"]['LKADriverAppldTrq']
     ret.steeringTorqueEps = pt_cp.vl["PSCMStatus"]['LKATotalTorqueDelivered']
@@ -59,15 +66,18 @@ class CarState(CarStateBase):
     self.main_on = bool(pt_cp.vl["ECMEngineStatus"]['CruiseMainOn'])
     ret.espDisabled = pt_cp.vl["ESPStatus"]['TractionControlOn'] != 1
     self.pcm_acc_status = pt_cp.vl["ASCMActiveCruiseControlStatus"]['ACCCmdActive']
-    ret.cruiseState.available = self.main_on
-    ret.cruiseState.enabled = self.pcm_acc_status != 0
-    ret.cruiseState.standstill = False
+    if self.CP.enableGasInterceptor:
+      ret.cruiseState.available = not bool(pt_cp.vl["ECMEngineStatus"]['CruiseMainOn'])
+    else:
+      ret.cruiseState.available = bool(pt_cp.vl["ECMEngineStatus"]['CruiseMainOn'])
+    ret.cruiseState.enabled = self.pcm_acc_status != AccState.OFF
+    ret.cruiseState.standstill = self.pcm_acc_status == AccState.STANDSTILL
 
-    ret.brakePressed = ret.brake > 1e-5
     # Regen braking is braking
     self.regen_pressed = False
-    if self.car_fingerprint == CAR.VOLT or self.car_fingerprint == CAR.BOLT:
+    if self.car_fingerprint in REGEN_CARS:
       self.regen_pressed = bool(pt_cp.vl["EBCMRegenPaddle"]['RegenPaddle'])
+    ret.brakePressed = ret.brake > 1e-5 or self.regen_pressed
 
     brake_light_enable = False
     if self.car_fingerprint == CAR.BOLT:
