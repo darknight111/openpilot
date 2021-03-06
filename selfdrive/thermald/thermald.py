@@ -182,6 +182,7 @@ def thermald_thread():
   should_start_prev = False
   handle_fan = None
   is_uno = False
+  has_relay = False
   ui_running_prev = False
 
   params = Params()
@@ -212,6 +213,7 @@ def thermald_thread():
       if handle_fan is None and pandaState.pandaState.pandaType != log.PandaState.PandaType.unknown:
         is_uno = pandaState.pandaState.pandaType == log.PandaState.PandaType.uno
 
+        has_relay = health.health.hwType in [log.HealthData.HwType.blackPanda, log.HealthData.HwType.uno, log.HealthData.HwType.dos]
         if (not EON) or is_uno:
           cloudlog.info("Setting up UNO fan handler")
           handle_fan = handle_fan_uno
@@ -347,8 +349,7 @@ def thermald_thread():
     startup_conditions["device_temp_good"] = thermal_status < ThermalStatus.danger
     set_offroad_alert_if_changed("Offroad_TemperatureTooHigh", (not startup_conditions["device_temp_good"]))
 
-    startup_conditions["hardware_supported"] = pandaState is not None and pandaState.pandaState.pandaType not in [log.PandaState.PandaType.whitePanda,
-                                                                                                   log.PandaState.PandaType.greyPanda]
+    startup_conditions["hardware_supported"] = health is not None
     set_offroad_alert_if_changed("Offroad_HardwareUnsupported", pandaState is not None and not startup_conditions["hardware_supported"])
 
     # Handle offroad/onroad transition
