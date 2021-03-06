@@ -31,7 +31,7 @@ class CarController():
     self.lka_icon_status_last = (False, False)
     self.steer_rate_limited = False
     self.car_fingerprint = CP.carFingerprint
-    
+
     self.params = CarControllerParams()
 
     self.packer_pt = CANPacker(DBC[CP.carFingerprint]['pt'])
@@ -64,7 +64,7 @@ class CarController():
     ### GAS/BRAKE ###
     # no output if not enabled, but keep sending keepalive messages
     # treat pedals as one
-
+    
     if CS.CP.enableGasInterceptor and self.car_fingerprint in REGEN_CARS:
       #It seems in L mode, accel / decel point is around 1/5
       #-1-------AEB------0----regen---0.15-------accel----------+1
@@ -80,7 +80,7 @@ class CarController():
         # controls mismatch.
         final_pedal = 0.0
       #TODO: Use friction brake via AEB for harder braking
-
+      
       # apply pedal hysteresis and clip the final output to valid values.
       final_pedal, self.pedal_steady = actuator_hystereses(final_pedal, self.pedal_steady)
       pedal_gas = clip(final_pedal, 0., 1.)
@@ -90,11 +90,6 @@ class CarController():
         # send exactly zero if apply_gas is zero. Interceptor will send the max between read value and apply_gas.
         # This prevents unexpected pedal range rescaling
         can_sends.append(create_gas_command(self.packer_pt, pedal_gas, idx))
-
-    # Send dashboard UI commands (ACC status), 25hz
-    if (frame % 4) == 0:
-        can_sends.append(gmcan.create_acc_dashboard_command(self.packer_pt, CanBus.POWERTRAIN, enabled, hud_v_cruise * CV.MS_TO_KPH, hud_show_car))
-
 
     # Send dashboard UI commands (ACC status), 25hz
     if (frame % 4) == 0:
