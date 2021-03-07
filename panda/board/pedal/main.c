@@ -23,7 +23,9 @@
 
 #define CAN CAN1
 
-//#define PEDAL_USB
+#define PEDAL_USB
+
+#define DEBUG
 
 #ifdef PEDAL_USB
   #include "drivers/uart.h"
@@ -76,7 +78,6 @@ void usb_cb_ep3_out(void *usbdata, int len, bool hardwired) {
   UNUSED(len);
   UNUSED(hardwired);
 }
-void usb_cb_ep3_out_complete(void) {}
 void usb_cb_enumeration_complete(void) {}
 
 int usb_cb_control_msg(USB_Setup_TypeDef *setup, uint8_t *resp, bool hardwired) {
@@ -260,12 +261,21 @@ void TIM3_IRQ_Handler(void) {
   }
 }
 
+//This scales the values read from the ADC to match the expected values for the Chevy Bolt EV
+//TODO: some means of making this more configurable / automatic
+uint32_t adjust(uint32_t readVal) {
+  return ((readVal * 1545)/1000) + 25;
+}
+
 // ***************************** main code *****************************
 
 void pedal(void) {
   // read/write
-  pdl0 = adc_get(ADCCHAN_ACCEL0);
-  pdl1 = adc_get(ADCCHAN_ACCEL1);
+  pdl0 = adjust(adc_get(ADCCHAN_ACCEL0));
+  pdl1 = adjust(adc_get(ADCCHAN_ACCEL1));
+
+
+
 
   // write the pedal to the DAC
   if (state == NO_FAULT) {
@@ -316,8 +326,7 @@ int main(void) {
     puts("Failed to set llcan speed");
   }
 
-  bool ret = llcan_init(CAN1);
-  UNUSED(ret);
+  llcan_init(CAN1);
 
   // 48mhz / 65536 ~= 732
   timer_init(TIM3, 15);
